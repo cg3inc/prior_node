@@ -7,24 +7,29 @@ const assert = require("node:assert/strict");
 const path = require("path");
 const os = require("os");
 
+// Prior-specific exports
 const {
   buildMcpConfig,
   buildHttpConfigWithAuth,
   buildStdioConfig,
-  installMcpJson,
   installRules,
   uninstallRules,
   parseRulesVersion,
-  createManualPlatform,
-  sanitizeError,
-  getVsCodeMcpPath,
-  getVsCodeUserDir,
-  getClineConfigPath,
-  getRooConfigPath,
   PRIOR_MARKER_RE,
   PRIOR_BLOCK_RE,
   getBundledRules,
 } = require("../bin/setup.js");
+
+// Equip primitives (platform detection, MCP config, etc.)
+const {
+  installMcpJson: _installMcpJson,
+  createManualPlatform,
+  cli: { sanitizeError },
+} = require("@cg3/equip");
+const { getVsCodeMcpPath, getVsCodeUserDir, getClineConfigPath, getRooConfigPath } = require("@cg3/equip/platforms");
+
+// Bind "prior" as server name to match old API
+const installMcpJson = (platform, mcpEntry, dryRun) => _installMcpJson(platform, "prior", mcpEntry, dryRun);
 
 // ─── Mock Helpers ─────────────────────────────────────────────
 
@@ -52,9 +57,18 @@ function cleanupFile(p) {
 // ─── Config Generation ───────────────────────────────────────
 
 describe("MCP config generation", () => {
-  it("generates correct HTTP config with auth (Claude/Cursor)", () => {
+  it("generates correct HTTP config with auth (Claude Code)", () => {
     const config = buildHttpConfigWithAuth("ask_test123", "claude-code");
     assert.deepStrictEqual(config, {
+      url: "https://api.cg3.io/mcp",
+      headers: { Authorization: "Bearer ask_test123" },
+    });
+  });
+
+  it("generates correct HTTP config with auth (Cursor uses type: streamable-http)", () => {
+    const config = buildHttpConfigWithAuth("ask_test123", "cursor");
+    assert.deepStrictEqual(config, {
+      type: "streamable-http",
       url: "https://api.cg3.io/mcp",
       headers: { Authorization: "Bearer ask_test123" },
     });
@@ -404,7 +418,7 @@ describe("Regex patterns", () => {
 
 describe("Platform detection", () => {
   // These are environment-dependent — test what we can
-  const { detectPlatforms } = require("../bin/setup.js");
+  const { detectPlatforms } = require("@cg3/equip");
 
   it("returns an array", () => {
     const platforms = detectPlatforms();
@@ -424,7 +438,8 @@ describe("Platform detection", () => {
 // ─── MCP Uninstall ───────────────────────────────────────────
 
 describe("MCP uninstall", () => {
-  const { uninstallMcp } = require("../bin/setup.js");
+  const { uninstallMcp: _uninstallMcp } = require("@cg3/equip");
+  const uninstallMcp = (platform, dryRun) => _uninstallMcp(platform, "prior", dryRun);
 
   it("removes prior entry from config", () => {
     const p = mockPlatform();

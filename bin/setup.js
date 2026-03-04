@@ -232,8 +232,12 @@ Examples:
   log("Detecting environment...");
 
   let platforms = equip.detect();
+  let equipVersion = "unknown";
+  try { equipVersion = require("@cg3/equip/package.json").version; } catch {}
+
   log(`  OS         ${process.platform} ${os.arch()}`);
   log(`  Node       ${process.version}`);
+  log(`  Equip      v${equipVersion}`);
   log(`  Prior CLI  v${VERSION}`);
 
   // Filter by --platform if specified
@@ -862,8 +866,8 @@ async function runUninstall(args, equip, dryRun, VERSION) {
 module.exports = {
   cmdSetup,
   createEquip,
-  // Re-export equip primitives for tests
-  detectPlatforms,
+  getBundledRules,
+  // Prior-specific wrappers (bind server URL, marker, etc.)
   buildHttpConfigWithAuth: (apiKey, platform) => buildHttpConfigWithAuth(MCP_URL, apiKey, platform),
   buildStdioConfig: (apiKey) => {
     if (process.platform === "win32") {
@@ -880,15 +884,7 @@ module.exports = {
     }
     return buildHttpConfigWithAuth(MCP_URL, apiKey, platform);
   },
-  installMcpJson: (platform, mcpEntry, dryRun) => installMcpJson(platform, "prior", mcpEntry, dryRun),
-  installMcpToml: (platform, mcpEntry, dryRun) => installMcpToml(platform, "prior", mcpEntry, dryRun),
-  uninstallMcp: (platform, dryRun) => uninstallMcp(platform, "prior", dryRun),
-  updateMcpKey: (platform, apiKey, transport) => {
-    const equip = createEquip();
-    return equip.updateMcpKey(platform, apiKey, transport);
-  },
   installRules: (platform, bundledRules, currentVersion, dryRun) => {
-    // Platforms with directory-based rules get a standalone file; others append to existing file
     const standaloneFile = (platform.platform === "cline" || platform.platform === "roo-code") ? "prior.md" : undefined;
     return installRules(platform, {
       content: bundledRules,
@@ -904,26 +900,7 @@ module.exports = {
     const standaloneFile = (platform.platform === "cline" || platform.platform === "roo-code") ? "prior.md" : undefined;
     return uninstallRules(platform, { marker: PRIOR_MARKER, fileName: standaloneFile, dryRun });
   },
-  installSkill,
-  uninstallSkill,
-  verifySetup,
   parseRulesVersion: (content) => parseRulesVersion(content, PRIOR_MARKER),
-  getBundledRules,
-  createManualPlatform,
-  copyToClipboard,
-  sanitizeError,
   PRIOR_MARKER_RE: markerPatterns(PRIOR_MARKER).MARKER_RE,
   PRIOR_BLOCK_RE: markerPatterns(PRIOR_MARKER).BLOCK_RE,
-  // Equip path helpers
-  getVsCodeMcpPath: require("@cg3/equip/platforms").getVsCodeMcpPath,
-  getVsCodeUserDir: require("@cg3/equip/platforms").getVsCodeUserDir,
-  getVsCodeVersion: () => {
-    try {
-      const out = execSync("code --version 2>&1", { encoding: "utf-8", timeout: 5000 });
-      const m = out.match(/(\d+\.\d+[\.\d]*)/);
-      return m ? m[1] : null;
-    } catch { return null; }
-  },
-  getClineConfigPath: require("@cg3/equip/platforms").getClineConfigPath,
-  getRooConfigPath: require("@cg3/equip/platforms").getRooConfigPath,
 };
