@@ -232,15 +232,17 @@ Examples:
   log("Detecting environment...");
 
   let platforms = equip.detect();
-  let equipVersion = "unknown";
-  try {
-    const equipDir = path.dirname(require.resolve("@cg3/equip"));
-    equipVersion = JSON.parse(fs.readFileSync(path.join(equipDir, "package.json"), "utf-8")).version;
-  } catch {}
+  let equipVersion = process.env.EQUIP_VERSION;
+  if (!equipVersion) {
+    try {
+      const equipDir = path.dirname(require.resolve("@cg3/equip"));
+      equipVersion = JSON.parse(fs.readFileSync(path.join(equipDir, "package.json"), "utf-8")).version;
+    } catch {}
+  }
 
   log(`  OS         ${process.platform} ${os.arch()}`);
   log(`  Node       ${process.version}`);
-  log(`  Equip      v${equipVersion}`);
+  if (equipVersion) log(`  Equip      v${equipVersion}`);
   log(`  Prior CLI  v${VERSION}`);
 
   // Filter by --platform if specified
