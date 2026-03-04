@@ -9,7 +9,9 @@ const os = require("os");
 const http = require("http");
 const crypto = require("crypto");
 
-const VERSION = "0.5.5";
+const VERSION = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8")
+).version;
 const API_URL = process.env.PRIOR_BASE_URL || "https://api.cg3.io";
 
 /** Expand [PRIOR:*] tokens to CLI command syntax */
