@@ -26,7 +26,8 @@ How to search:
 - Include framework/language name for better matches
 - Read `failedApproaches` first — skip dead ends
 
-After solving a problem that required 2+ failed fix attempts, ask the user
-once if they'd like to contribute the solution. Ask at most once per
-conversation.
+After using tools: did you change approach after something failed, or
+combine information from multiple sources? Ask if they'd like to
+contribute. Once per conversation or until a contribution nudge appears
+in a search response.
 <!-- /prior -->

@@ -57,15 +57,31 @@ function getRulesVersion() {
   return parseRulesVersion(content, PRIOR_MARKER);
 }
 
+// ─── Remote Instructions ─────────────────────────────────────
+
+async function getInstructions(apiUrl) {
+  try {
+    const res = await fetch(`${apiUrl}/v1/instructions`, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.ok && json.data) return { version: json.data.version, text: json.data.text };
+    }
+  } catch { /* offline or timeout */ }
+  // Fallback: bundled condensed.md
+  return { version: getRulesVersion(), text: getBundledRules() };
+}
+
 // ─── Equip Instance ──────────────────────────────────────────
 
-function createEquip(version) {
+function createEquip(version, instructions) {
+  const rulesContent = instructions ? instructions.text : getBundledRules();
+  const rulesVersion = instructions ? instructions.version : (version || getRulesVersion());
   return new Equip({
     name: "prior",
     serverUrl: MCP_URL,
     rules: {
-      content: getBundledRules(),
-      version: version || getRulesVersion(),
+      content: rulesContent,
+      version: rulesVersion,
       marker: PRIOR_MARKER,
       fileName: "prior.md", // Standalone file for Cline/Roo Code
       clipboardPlatforms: ["cursor", "vscode"],
@@ -153,7 +169,7 @@ async function verifySetup(platform, equip, apiKey, apiUrl) {
 
 // ─── Setup Report ────────────────────────────────────────────
 
-async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults) {
+async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults, instructionsVersion) {
   try {
     await fetch(`${apiUrl}/v1/agents/setup-report`, {
       method: "POST",
@@ -164,6 +180,7 @@ async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults) {
       },
       body: JSON.stringify({
         cliVersion,
+        instructionsVersion: instructionsVersion || undefined,
         os: process.platform,
         nodeVersion: process.version,
         platforms: platformResults.map(r => ({
@@ -182,7 +199,8 @@ async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults) {
 
 async function cmdSetup(args, deps) {
   const { VERSION, API_URL, loadConfig, saveConfig, api } = deps;
-  const equip = createEquip(VERSION);
+  const instructions = await getInstructions(API_URL);
+  const equip = createEquip(VERSION, instructions);
 
   if (args.help) {
     log(`prior setup [options]
@@ -354,7 +372,7 @@ Examples:
         ok(`${platformName(p.platform)}   Rules already up to date`);
       } else {
         const rulesFile = p.rulesPath ? p.rulesPath.replace(os.homedir(), "~").replace(/\\/g, "/") : "rules file";
-        ok(`${platformName(p.platform)}   Prior rules ${rResult.action} in ${rulesFile}`);
+        ok(`${platformName(p.platform)}   Prior instructions ${instructions.version} ${rResult.action} in ${rulesFile}`);
       }
 
       // Claude Code bonus: install skill
@@ -421,7 +439,7 @@ Examples:
       transport: p.transport,
       success: p.mcpSuccess,
       error: p.error,
-    })));
+    })), instructions.version);
   }
 
   // ── Summary ──
@@ -871,6 +889,8 @@ async function runUninstall(args, equip, dryRun, VERSION) {
 module.exports = {
   cmdSetup,
   createEquip,
+  getInstructions,
+  sendSetupReport,
   getBundledRules,
   // Prior-specific wrappers (bind server URL, marker, etc.)
   buildHttpConfigWithAuth: (apiKey, platform) => buildHttpConfigWithAuth(MCP_URL, apiKey, platform),

@@ -18,6 +18,8 @@ const {
   PRIOR_MARKER_RE,
   PRIOR_BLOCK_RE,
   getBundledRules,
+  getInstructions,
+  sendSetupReport,
 } = require("../bin/setup.js");
 
 // Equip primitives (platform detection, MCP config, etc.)
@@ -619,5 +621,86 @@ describe("VS Code rules (clipboard)", () => {
     const rules = getBundledRules();
     const result = installRules(p, rules, "0.5.3", true);
     assert.equal(result.action, "clipboard");
+  });
+});
+
+// ─── Remote Instructions ─────────────────────────────────────
+
+describe("getInstructions", () => {
+  it("returns fetched data when API is available", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        data: { version: "0.6.0", text: "# Remote instructions\n<!-- prior:v0.6.0 -->\ncontent\n<!-- /prior -->" },
+      }),
+    });
+    try {
+      const result = await getInstructions("https://api.cg3.io");
+      assert.equal(result.version, "0.6.0");
+      assert.ok(result.text.includes("Remote instructions"));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("falls back to bundled when fetch fails", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => { throw new Error("network error"); };
+    try {
+      const result = await getInstructions("https://api.cg3.io");
+      assert.ok(result.version, "should have a version from bundled rules");
+      assert.ok(result.text.includes("Prior"), "should contain bundled rules content");
+      assert.equal(result.version, parseRulesVersion(getBundledRules()));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("falls back to bundled when API returns non-ok response", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: false, status: 500 });
+    try {
+      const result = await getInstructions("https://api.cg3.io");
+      assert.equal(result.version, parseRulesVersion(getBundledRules()));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("falls back to bundled when API returns unexpected shape", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ ok: false }),
+    });
+    try {
+      const result = await getInstructions("https://api.cg3.io");
+      assert.equal(result.version, parseRulesVersion(getBundledRules()));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("Setup report includes instructionsVersion", () => {
+  it("sendSetupReport sends instructionsVersion in payload", async () => {
+    let capturedBody = null;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      if (url.includes("setup-report")) {
+        capturedBody = JSON.parse(opts.body);
+      }
+      return { ok: true };
+    };
+    try {
+      await sendSetupReport("ask_test", "https://api.cg3.io", "1.0.0", [], "0.6.0");
+      assert.ok(capturedBody, "fetch should have been called");
+      assert.equal(capturedBody.instructionsVersion, "0.6.0");
+      assert.equal(capturedBody.cliVersion, "1.0.0");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
