@@ -64,11 +64,11 @@ async function getInstructions(apiUrl) {
     const res = await fetch(`${apiUrl}/v1/instructions`, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       const json = await res.json();
-      if (json.ok && json.data) return { version: json.data.version, text: json.data.text };
+      if (json.ok && json.data) return { version: json.data.version, text: json.data.text, source: "api" };
     }
   } catch { /* offline or timeout */ }
   // Fallback: bundled condensed.md
-  return { version: getRulesVersion(), text: getBundledRules() };
+  return { version: getRulesVersion(), text: getBundledRules(), source: "bundled" };
 }
 
 // ─── Equip Instance ──────────────────────────────────────────
@@ -169,7 +169,7 @@ async function verifySetup(platform, equip, apiKey, apiUrl) {
 
 // ─── Setup Report ────────────────────────────────────────────
 
-async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults, instructionsVersion) {
+async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults, instructionsVersion, extras) {
   try {
     await fetch(`${apiUrl}/v1/agents/setup-report`, {
       method: "POST",
@@ -183,6 +183,7 @@ async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults, inst
         instructionsVersion: instructionsVersion || undefined,
         os: process.platform,
         nodeVersion: process.version,
+        arch: process.arch,
         platforms: platformResults.map(r => ({
           platform: r.platform,
           version: r.version,
@@ -190,6 +191,7 @@ async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults, inst
           success: r.success,
           error: r.error ? sanitizeError(r.error) : undefined,
         })),
+        ...(extras || {}),
       }),
     });
   } catch { /* Fire and forget */ }
@@ -198,7 +200,10 @@ async function sendSetupReport(apiKey, apiUrl, cliVersion, platformResults, inst
 // ─── Main Setup Command ──────────────────────────────────────
 
 async function cmdSetup(args, deps) {
+  const setupStartTime = Date.now();
   const { VERSION, API_URL, loadConfig, saveConfig, api } = deps;
+  const existingConfig = loadConfig();
+  const isFirstRun = !existingConfig || (!existingConfig.apiKey && !existingConfig.tokens);
   const instructions = await getInstructions(API_URL);
   const equip = createEquip(VERSION, instructions);
 
@@ -294,6 +299,13 @@ Examples:
   // ── Step 1: Authentication ──
   const totalSteps = 4;
   step(1, totalSteps, "Authentication");
+
+  let authMethod = "unknown";
+  if (args.apiKey) authMethod = "api_key_flag";
+  else if (args.apiKeyFile) authMethod = "api_key_file";
+  else if (existingConfig?.apiKey || process.env.PRIOR_API_KEY) authMethod = "existing_key";
+  else if (existingConfig?.tokens?.access_token) authMethod = "existing_oauth";
+  else authMethod = "oauth_login";
 
   let apiKey = await resolveAuth(args, deps, nonInteractive, dryRun);
   if (!apiKey) {
@@ -439,7 +451,12 @@ Examples:
       transport: p.transport,
       success: p.mcpSuccess,
       error: p.error,
-    })), instructions.version);
+    })), instructions.version, {
+      isFirstRun,
+      setupDurationMs: Date.now() - setupStartTime,
+      authMethod,
+      instructionsSource: instructions.source,
+    });
   }
 
   // ── Summary ──
