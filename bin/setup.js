@@ -224,7 +224,7 @@ function evalContributeNudge(state, input) {
 
   // Need real iterative work: multiple errors, multiple edits, at least one search
   if (state.prompt.errorCount < 2) return null;
-  if (state.prompt.editCount < 2) return null;
+  if (state.prompt.editCount < 1) return null;
   if (state.prompt.searchCount < 1) return null;
   if (state.prompt.contributionCount > 0) return null;
 
