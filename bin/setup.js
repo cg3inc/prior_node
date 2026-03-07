@@ -92,7 +92,7 @@ const MAX_HISTORY = 5;
 
 // ── State Management ──
 function stateDir() { return os.tmpdir(); }
-function stateFile() { return path.join(stateDir(), "prior-hooks-" + process.ppid + ".json"); }
+function stateFile() { return path.join(stateDir(), "prior-hooks.json"); }
 
 function freshPrompt(now) {
   return {
@@ -106,7 +106,7 @@ function freshPrompt(now) {
 
 function freshState(now) {
   return {
-    v: 1, pid: process.ppid,
+    v: 1,
     session: {
       startedAt: now, lastToolAt: now,
       promptCount: 0, totalToolCalls: 0,
@@ -119,27 +119,18 @@ function freshState(now) {
 }
 
 function readState() {
-  try { return JSON.parse(fs.readFileSync(stateFile(), "utf-8")); }
-  catch { return freshState(Date.now()); }
+  try {
+    const s = JSON.parse(fs.readFileSync(stateFile(), "utf-8"));
+    // Reset if stale (old session)
+    if (s.session && (Date.now() - s.session.lastToolAt) > STALE_HOURS * 3600000) {
+      return freshState(Date.now());
+    }
+    return s;
+  } catch { return freshState(Date.now()); }
 }
 
 function writeState(s) {
   try { fs.writeFileSync(stateFile(), JSON.stringify(s)); } catch {}
-}
-
-function sweepStale() {
-  try {
-    const dir = stateDir();
-    const cutoff = Date.now() - STALE_HOURS * 3600000;
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.startsWith("prior-hooks-") || !f.endsWith(".json")) continue;
-      const fp = path.join(dir, f);
-      try {
-        const s = JSON.parse(fs.readFileSync(fp, "utf-8"));
-        if (s.session && s.session.lastToolAt < cutoff) fs.unlinkSync(fp);
-      } catch { try { fs.unlinkSync(fp); } catch {} }
-    }
-  } catch {}
 }
 
 // ── Event Detection ──
@@ -250,7 +241,6 @@ const chunks = [];
 process.stdin.on("data", c => chunks.push(c));
 process.stdin.on("end", () => {
   try {
-    sweepStale();
     const input = JSON.parse(Buffer.concat(chunks).toString());
     const event = detectEvent(input);
     if (!event) { process.exit(0); return; }
