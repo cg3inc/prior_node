@@ -10,28 +10,53 @@ const os = require("os");
 // Prior-specific exports
 const {
   buildMcpConfig,
-  buildHttpConfigWithAuth,
-  buildStdioConfig,
-  installRules,
-  uninstallRules,
   parseRulesVersion,
   PRIOR_MARKER_RE,
   PRIOR_BLOCK_RE,
   getBundledRules,
   getInstructions,
   sendSetupReport,
+  createManualPlatform,
 } = require("../bin/setup.js");
 
-// Equip primitives (platform detection, MCP config, etc.)
+// Equip (public API only)
 const {
-  installMcpJson: _installMcpJson,
-  createManualPlatform,
+  Equip,
   cli: { sanitizeError },
+  PLATFORM_REGISTRY,
 } = require("@cg3/equip");
-const { getVsCodeMcpPath, getVsCodeUserDir, getClineConfigPath, getRooConfigPath } = require("@cg3/equip/platforms");
+
+// Internal equip modules for low-level tests
+const { installMcpJson: _installMcpJson, uninstallMcp } = require("@cg3/equip/dist/lib/mcp.js");
+const { installRules: _installRulesRaw, uninstallRules: _uninstallRulesRaw } = require("@cg3/equip/dist/lib/rules.js");
 
 // Bind "prior" as server name to match old API
 const installMcpJson = (platform, mcpEntry, dryRun) => _installMcpJson(platform, "prior", mcpEntry, dryRun);
+
+// Prior-specific wrappers for tests
+const buildHttpConfigWithAuth = (apiKey, platform) => buildMcpConfig(apiKey, "http", platform || "claude-code");
+const buildStdioConfig = (apiKey) => buildMcpConfig(apiKey, "stdio", "claude-code");
+const installRules = (platform, bundledRules, currentVersion, dryRun) => {
+  const standaloneFile = (platform.platform === "cline" || platform.platform === "roo-code") ? "prior.md" : undefined;
+  return _installRulesRaw(platform, {
+    content: bundledRules,
+    version: currentVersion,
+    marker: "prior",
+    fileName: standaloneFile,
+    clipboardPlatforms: ["cursor", "vscode"],
+    dryRun: dryRun || false,
+  });
+};
+const uninstallRules = (platform, dryRun) => {
+  const standaloneFile = (platform.platform === "cline" || platform.platform === "roo-code") ? "prior.md" : undefined;
+  return _uninstallRulesRaw(platform, { marker: "prior", fileName: standaloneFile, dryRun });
+};
+
+// Platform path helpers (from registry)
+const getVsCodeMcpPath = () => PLATFORM_REGISTRY.get("vscode").configPath();
+const getVsCodeUserDir = () => { const p = getVsCodeMcpPath(); return require("path").dirname(p); };
+const getClineConfigPath = () => PLATFORM_REGISTRY.get("cline").configPath();
+const getRooConfigPath = () => PLATFORM_REGISTRY.get("roo-code").configPath();
 
 // ─── Mock Helpers ─────────────────────────────────────────────
 
@@ -62,6 +87,7 @@ describe("MCP config generation", () => {
   it("generates correct HTTP config with auth (Claude Code)", () => {
     const config = buildHttpConfigWithAuth("ask_test123", "claude-code");
     assert.deepStrictEqual(config, {
+      type: "http",
       url: "https://api.cg3.io/mcp",
       headers: { Authorization: "Bearer ask_test123" },
     });
@@ -420,7 +446,7 @@ describe("Regex patterns", () => {
 
 describe("Platform detection", () => {
   // These are environment-dependent — test what we can
-  const { detectPlatforms } = require("@cg3/equip");
+  const { detectPlatforms } = require("@cg3/equip/dist/lib/detect.js");
 
   it("returns an array", () => {
     const platforms = detectPlatforms();
@@ -440,9 +466,6 @@ describe("Platform detection", () => {
 // ─── MCP Uninstall ───────────────────────────────────────────
 
 describe("MCP uninstall", () => {
-  const { uninstallMcp: _uninstallMcp } = require("@cg3/equip");
-  const uninstallMcp = (platform, dryRun) => _uninstallMcp(platform, "prior", dryRun);
-
   it("removes prior entry from config", () => {
     const p = mockPlatform();
     fs.writeFileSync(p.configPath, JSON.stringify({
@@ -451,7 +474,7 @@ describe("MCP uninstall", () => {
         other: { url: "https://example.com" },
       },
     }));
-    const removed = uninstallMcp(p, false);
+    const removed = uninstallMcp(p, "prior", false);
     assert.ok(removed);
     const data = JSON.parse(fs.readFileSync(p.configPath, "utf-8"));
     assert.ok(!data.mcpServers.prior, "prior should be removed");
@@ -462,14 +485,14 @@ describe("MCP uninstall", () => {
   it("deletes file if empty after removal", () => {
     const p = mockPlatform();
     fs.writeFileSync(p.configPath, JSON.stringify({ mcpServers: { prior: {} } }));
-    uninstallMcp(p, false);
+    uninstallMcp(p, "prior", false);
     assert.ok(!fs.existsSync(p.configPath));
   });
 
   it("returns false if no prior entry", () => {
     const p = mockPlatform();
     fs.writeFileSync(p.configPath, JSON.stringify({ mcpServers: { other: {} } }));
-    const removed = uninstallMcp(p, false);
+    const removed = uninstallMcp(p, "prior", false);
     assert.ok(!removed);
     cleanupFile(p.configPath);
   });
@@ -477,7 +500,7 @@ describe("MCP uninstall", () => {
   it("returns false if file doesn't exist", () => {
     const p = mockPlatform();
     cleanupFile(p.configPath);
-    const removed = uninstallMcp(p, false);
+    const removed = uninstallMcp(p, "prior", false);
     assert.ok(!removed);
   });
 });

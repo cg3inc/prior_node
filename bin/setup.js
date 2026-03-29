@@ -14,21 +14,11 @@ const readline = require("readline");
 
 const {
   Equip,
-  detectPlatforms,
-  readMcpEntry,
-  buildHttpConfigWithAuth,
-  buildStdioConfig,
-  buildHttpConfig,
-  installMcpJson,
-  installMcpToml,
-  uninstallMcp,
-  updateMcpKey,
-  installRules,
-  uninstallRules,
   parseRulesVersion,
   markerPatterns,
   createManualPlatform,
   platformName,
+  resolvePlatformId,
   cli,
 } = require("@cg3/equip");
 
@@ -248,7 +238,7 @@ Detects your environment, authenticates, configures MCP, and installs
 behavioral rules so your agents start using Prior automatically.
 
 Options:
-  --platform <name>      Target: claude-code, cursor, windsurf, vscode, cline, roo-code, junie, copilot-jetbrains, copilot-cli
+  --platform <name>      Target specific platform(s), comma-separated. Aliases: claude, code, roo, gemini, copilot
   --transport http|stdio Transport (default: http)
   --api-key <key>        Use this API key (skips OAuth)
   --api-key-file <path>  Read API key from file (- for stdin)
@@ -264,7 +254,8 @@ Options:
 
 Examples:
   prior setup                          # Interactive (recommended)
-  prior setup --platform claude-code   # Specific platform
+  prior setup --platform claude         # Specific platform (alias for claude-code)
+  prior setup --platform claude,cursor  # Multiple platforms
   prior setup --transport stdio        # Local MCP server
   prior setup --update                 # Refresh everything
   prior setup --rekey                  # Rotate API key
@@ -301,11 +292,15 @@ Examples:
   if (equipVersion) log(`  Equip      v${equipVersion}`);
   log(`  Prior CLI  v${VERSION}`);
 
-  // Filter by --platform if specified
+  // Filter by --platform if specified (supports comma-separated values and friendly aliases)
   if (args.platform) {
-    platforms = platforms.filter(p => p.platform === args.platform);
-    if (platforms.length === 0) {
-      platforms = [createManualPlatform(args.platform)];
+    const requested = args.platform.split(",").map(s => resolvePlatformId(s));
+    const matched = platforms.filter(p => requested.includes(p.platform));
+    if (matched.length > 0) {
+      platforms = matched;
+    } else {
+      // None detected — create manual entries for each requested platform
+      platforms = requested.map(id => createManualPlatform(id));
     }
   }
 
@@ -354,7 +349,9 @@ Examples:
   } else {
     const whoami = await api("GET", "/v1/agents/me", null, apiKey);
     if (whoami.ok && whoami.data) {
-      ok(`Authenticated as ${whoami.data.agentId} (${whoami.data.credits} credits)`);
+      const email = whoami.data.email;
+      const display = email ? email.replace(/^(..)[^@]*/, "$1***") : whoami.data.agentName || whoami.data.id?.slice(0, 8);
+      ok(`Authenticated as ${display}`);
     } else {
       fail("API key validation failed");
       log(`    → Key may be invalid or expired`);
@@ -717,7 +714,7 @@ async function resolveAuth(args, deps, nonInteractive, dryRun) {
     const existingConfig = loadConfig();
     if (existingConfig?.apiKey) {
       warn("Login timed out, but found existing credentials.");
-      ok(`Authenticated as ${existingConfig.agentId || "existing agent"}`);
+      ok(`Authenticated (existing credentials)`);
       return existingConfig.apiKey;
     }
     fail("Login timed out. Try again or use: prior setup --api-key-file <path>");
@@ -769,7 +766,9 @@ async function runUpdate(args, deps, equip, platforms, transport, nonInteractive
   if (apiKey) {
     const check = await api("GET", "/v1/agents/me", null, apiKey);
     if (check.ok) {
-      ok(`API key valid (${check.data.agentId})`);
+      const vEmail = check.data.email;
+      const vDisplay = vEmail ? vEmail.replace(/^(..)[^@]*/, "$1***") : check.data.agentName || "verified";
+      ok(`API key valid (${vDisplay})`);
     } else {
       warn("API key invalid (401)");
       apiKey = await resolveAuth(args, deps, nonInteractive, dryRun);
@@ -867,7 +866,7 @@ async function runRekey(args, deps, equip, platforms, transport, nonInteractive,
       fail("Provided key is invalid.");
       process.exit(1);
     }
-    ok(`Key valid (${check.data.agentId})`);
+    ok("Key valid");
   } else if (args.apiKeyFile) {
     apiKey = deps.readApiKeyFromFile(args.apiKeyFile);
     const check = await api("GET", "/v1/agents/me", null, apiKey);
@@ -875,7 +874,7 @@ async function runRekey(args, deps, equip, platforms, transport, nonInteractive,
       fail("Key from file is invalid.");
       process.exit(1);
     }
-    ok(`Key valid (${check.data.agentId})`);
+    ok("Key valid");
   } else {
     log("\nGenerating new API key...");
     apiKey = await resolveAuth({ ...args, skipAuth: false }, deps, nonInteractive, dryRun);
@@ -937,7 +936,8 @@ async function runUninstall(args, equip, dryRun, VERSION) {
 
   let platforms = equip.detect();
   if (args.platform) {
-    platforms = platforms.filter(p => p.platform === args.platform);
+    const requested = args.platform.split(",").map(s => resolvePlatformId(s));
+    platforms = platforms.filter(p => requested.includes(p.platform));
   }
 
   if (platforms.length === 0) {
@@ -979,40 +979,16 @@ module.exports = {
   getInstructions,
   sendSetupReport,
   getBundledRules,
-  // Prior-specific wrappers (bind server URL, marker, etc.)
-  buildHttpConfigWithAuth: (apiKey, platform) => buildHttpConfigWithAuth(MCP_URL, apiKey, platform),
-  buildStdioConfig: (apiKey) => {
-    if (process.platform === "win32") {
-      return { command: "cmd", args: ["/c", "npx", "-y", "@cg3/prior-mcp"], env: { PRIOR_API_KEY: apiKey } };
-    }
-    return { command: "npx", args: ["-y", "@cg3/prior-mcp"], env: { PRIOR_API_KEY: apiKey } };
-  },
+  // Prior-specific helpers for tests
   buildMcpConfig: (apiKey, transport, platform) => {
-    if (transport === "stdio") {
-      if (process.platform === "win32") {
-        return { command: "cmd", args: ["/c", "npx", "-y", "@cg3/prior-mcp"], env: { PRIOR_API_KEY: apiKey } };
-      }
-      return { command: "npx", args: ["-y", "@cg3/prior-mcp"], env: { PRIOR_API_KEY: apiKey } };
-    }
-    return buildHttpConfigWithAuth(MCP_URL, apiKey, platform);
-  },
-  installRules: (platform, bundledRules, currentVersion, dryRun) => {
-    const standaloneFile = (platform.platform === "cline" || platform.platform === "roo-code") ? "prior.md" : undefined;
-    return installRules(platform, {
-      content: bundledRules,
-      version: currentVersion,
-      marker: PRIOR_MARKER,
-      fileName: standaloneFile,
-      clipboardPlatforms: ["cursor", "vscode"],
-      dryRun,
-      copyToClipboard,
-    });
-  },
-  uninstallRules: (platform, dryRun) => {
-    const standaloneFile = (platform.platform === "cline" || platform.platform === "roo-code") ? "prior.md" : undefined;
-    return uninstallRules(platform, { marker: PRIOR_MARKER, fileName: standaloneFile, dryRun });
+    const equip = createEquip();
+    return equip.buildConfig(platform, apiKey, transport);
   },
   parseRulesVersion: (content) => parseRulesVersion(content, PRIOR_MARKER),
   PRIOR_MARKER_RE: markerPatterns(PRIOR_MARKER).MARKER_RE,
   PRIOR_BLOCK_RE: markerPatterns(PRIOR_MARKER).BLOCK_RE,
+  // Re-exported from equip for convenience
+  createManualPlatform,
+  platformName,
+  resolvePlatformId,
 };
