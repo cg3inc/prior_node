@@ -100,6 +100,7 @@ function createEquip(version, instructions) {
   const rulesVersion = instructions ? instructions.version : (version || getRulesVersion());
   return new Equip({
     name: "prior",
+    package: "@cg3/prior-node",
     serverUrl: MCP_URL,
     rules: {
       content: rulesContent,
