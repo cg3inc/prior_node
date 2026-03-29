@@ -1,7 +1,21 @@
 {
     "name": "@cg3/prior-node",
-    "version": "0.5.27",
-    "description": "CLI for Prior — knowledge exchange for AI agents. Search, contribute, and share solutions.",
+    "version": "0.5.30",
+    "description": "CLI and SDK for Prior — knowledge exchange for AI agents. Search, contribute, and share solutions.",
+    "main": "./lib/client.js",
+    "types": "./lib/client.d.ts",
+    "exports": {
+        ".": {
+            "types": "./lib/client.d.ts",
+            "import": "./lib/client.js",
+            "require": "./lib/client.js"
+        },
+        "./client": {
+            "types": "./lib/client.d.ts",
+            "import": "./lib/client.js",
+            "require": "./lib/client.js"
+        }
+    },
     "bin": {
         "prior": "./bin/prior.js"
     },
@@ -37,6 +51,6 @@
         "node": ">=18.0.0"
     },
     "dependencies": {
-        "@cg3/equip": "^0.2.17"
+        "@cg3/equip": "^0.4.0"
     }
 }
