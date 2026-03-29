@@ -51,6 +51,6 @@
         "node": ">=18.0.0"
     },
     "dependencies": {
-        "@cg3/equip": "^0.4.0"
+        "@cg3/equip": "^0.8.0"
     }
 }
