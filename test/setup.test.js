@@ -172,20 +172,23 @@ describe("MCP JSON installation", () => {
     cleanupFile(p.configPath);
   });
 
-  it("creates backup before writing", () => {
+  it("cleans up backup after successful write", () => {
     const p = mockPlatform();
     fs.writeFileSync(p.configPath, '{"existing": true}');
     installMcpJson(p, buildHttpConfigWithAuth("ask_test"), false);
-    assert.ok(fs.existsSync(p.configPath + ".bak"), "backup should exist");
+    assert.ok(!fs.existsSync(p.configPath + ".bak"), "backup should be cleaned up after success");
     cleanupFile(p.configPath);
   });
 
-  it("handles empty/invalid existing file", () => {
+  it("throws on corrupt existing config instead of silently overwriting", () => {
     const p = mockPlatform();
     fs.writeFileSync(p.configPath, "not json");
-    installMcpJson(p, buildHttpConfigWithAuth("ask_test"), false);
-    const written = JSON.parse(fs.readFileSync(p.configPath, "utf-8"));
-    assert.ok(written.mcpServers.prior);
+    assert.throws(
+      () => installMcpJson(p, buildHttpConfigWithAuth("ask_test"), false),
+      /Cannot install.*Invalid JSON/
+    );
+    // Corrupt file should not have been overwritten
+    assert.equal(fs.readFileSync(p.configPath, "utf-8"), "not json");
     cleanupFile(p.configPath);
   });
 
