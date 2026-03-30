@@ -84,6 +84,8 @@ function readApiKeyFromFile(filePath) {
   return fs.readFileSync(resolved, "utf-8").split("\n")[0].trim();
 }
 
+const { PriorClient } = require("../lib/client.js");
+
 // --- HTTP ---
 
 async function refreshTokenIfNeeded() {
@@ -129,17 +131,13 @@ async function api(method, endpoint, body, key) {
     if (refreshed) k = refreshed;
   }
 
-  const res = await fetch(`${API_URL}${endpoint}`, {
-    method,
-    headers: {
-      ...(k ? { Authorization: `Bearer ${k}` } : {}),
-      "Content-Type": "application/json",
-      "User-Agent": `prior-cli/${VERSION}`,
-    },
-    body: body ? JSON.stringify(body) : undefined,
+  // Delegate to PriorClient SDK for the actual HTTP request
+  const client = new PriorClient({
+    apiKey: k || "anonymous",
+    baseUrl: API_URL,
+    userAgent: `prior-cli/${VERSION}`,
   });
-  const text = await res.text();
-  try { return JSON.parse(text); } catch { return { ok: false, error: text }; }
+  return client.rawRequest(method, endpoint, body);
 }
 
 // --- API Key Guard ---

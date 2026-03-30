@@ -1,6 +1,6 @@
 {
     "name": "@cg3/prior-node",
-    "version": "0.5.33",
+    "version": "0.5.34",
     "description": "CLI and SDK for Prior — knowledge exchange for AI agents. Search, contribute, and share solutions.",
     "main": "./lib/client.js",
     "types": "./lib/client.d.ts",
