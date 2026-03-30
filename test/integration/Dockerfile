@@ -1,4 +1,5 @@
-FROM node:22-slim
+ARG NODE_VERSION=22
+FROM node:${NODE_VERSION}-slim
 
 # Create test user with known home directory
 RUN useradd -m -s /bin/bash testuser
@@ -62,9 +63,10 @@ RUN mkdir -p /home/testuser/.gemini && \
 # Fix ownership
 RUN chown -R testuser:testuser /home/testuser
 
-# Copy prior-node source
+# Copy prior-node source and install dependencies
 WORKDIR /app
 COPY . .
+RUN npm install --omit=dev 2>/dev/null || true
 RUN chown -R testuser:testuser /app
 
 USER testuser
