@@ -407,7 +407,7 @@ Examples:
     if (equip.supportsHooks(p)) {
       try {
         const hookResult = equip.installHooks(p, { dryRun });
-        if (hookResult && hookResult.installed) {
+        if (hookResult.attempted && hookResult.success) {
           const uniqueScripts = [...new Set(hookResult.scripts)];
           const events = PRIOR_HOOKS.map(h => h.event);
           ok(`${platformName(p.platform)}   ${events.length} events → ${uniqueScripts[0]} ${dryRun ? "(dry run)" : ""}`);
