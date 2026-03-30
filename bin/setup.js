@@ -42,6 +42,13 @@ function getBundledSkill() {
   return fs.readFileSync(skillPath, "utf-8");
 }
 
+function getBundledSkillConfig() {
+  return {
+    name: "search",
+    files: [{ path: "SKILL.md", content: getBundledSkill() }],
+  };
+}
+
 function getRulesVersion() {
   const content = getBundledRules();
   return parseRulesVersion(content, PRIOR_MARKER);
@@ -115,78 +122,38 @@ function createEquip(version, instructions) {
       envKey: "PRIOR_API_KEY",
     },
     hooks: PRIOR_HOOKS,
+    skill: getBundledSkillConfig(),
   });
 }
 
-// ─── Prior-Specific: Skill Installation ──────────────────────
-
-function getSkillDir(platform) {
-  if (platform.platform !== "claude-code") return null;
-  return path.join(os.homedir(), ".claude", "skills", "prior", "search");
-}
-
-function fileExists(p) {
-  try { return fs.statSync(p).isFile(); } catch { return false; }
-}
-
-function installSkill(platform, dryRun) {
-  const skillDir = getSkillDir(platform);
-  if (!skillDir) return false;
-  if (!dryRun) {
-    fs.mkdirSync(skillDir, { recursive: true });
-    fs.writeFileSync(path.join(skillDir, "SKILL.md"), getBundledSkill());
-  }
-  return true;
-}
-
-function uninstallSkill(platform, dryRun) {
-  const skillDir = getSkillDir(platform);
-  if (!skillDir) return false;
-  const skillFile = path.join(skillDir, "SKILL.md");
-  if (!fileExists(skillFile)) return false;
-  if (!dryRun) {
-    try { fs.unlinkSync(skillFile); } catch {}
-    try { fs.rmdirSync(skillDir); } catch {}
-    try { fs.rmdirSync(path.dirname(skillDir)); } catch {}
-  }
-  return true;
-}
+// Skill installation is now handled by equip via the `skill` config
+// in the Equip constructor. No custom skill code needed.
 
 // ─── Verification ────────────────────────────────────────────
 
 async function verifySetup(platform, equip, apiKey, apiUrl) {
-  const results = { mcp: false, api: false, rules: false, skill: false };
+  // Use equip.verify() for MCP, rules, hooks, and skills checks
+  const equipResult = equip.verify(platform);
+  const results = {
+    mcp: equipResult.checks.find(c => c.name === "mcp")?.ok ?? false,
+    rules: equipResult.checks.find(c => c.name === "rules")?.ok ?? true, // true if not checked (clipboard platforms)
+    skill: equipResult.checks.find(c => c.name === "skills")?.ok ?? true, // true if not checked (no skillsPath)
+    hooks: equipResult.checks.find(c => c.name === "hooks")?.ok ?? true, // true if not checked
+    api: false,
+  };
 
-  // 1. MCP config exists
-  results.mcp = !!equip.readMcp(platform);
+  // Clipboard platforms — can't verify rules, assume ok
+  if (platform.platform === "cursor" || platform.platform === "vscode") {
+    results.rules = true;
+  }
 
-  // 2. API reachable
+  // Prior-specific: API connectivity test (equip doesn't do this)
   try {
     const res = await fetch(`${apiUrl}/v1/agents/me`, {
       headers: { Authorization: `Bearer ${apiKey}`, "User-Agent": "prior-setup" },
     });
     results.api = res.ok;
   } catch {}
-
-  // 3. Rules exist
-  if (platform.rulesPath) {
-    try {
-      const rulesPath = platform.platform === "cline" || platform.platform === "roo-code"
-        ? path.join(platform.rulesPath, "prior.md")
-        : platform.rulesPath;
-      const content = fs.readFileSync(rulesPath, "utf-8");
-      const { MARKER_RE } = markerPatterns(PRIOR_MARKER);
-      results.rules = MARKER_RE.test(content);
-    } catch {}
-  } else if (platform.platform === "cursor" || platform.platform === "vscode") {
-    results.rules = true; // Can't verify clipboard paste
-  }
-
-  // 4. Skill exists (Claude Code only)
-  const skillDir = getSkillDir(platform);
-  if (skillDir) {
-    results.skill = fileExists(path.join(skillDir, "SKILL.md"));
-  }
 
   return results;
 }
@@ -420,10 +387,10 @@ Examples:
 
       p.rulesAction = rResult.action; // Track for setup report
 
-      // Claude Code bonus: install skill
-      if (p.platform === "claude-code") {
-        installSkill(p, dryRun);
-        ok(`${platformName(p.platform)}   Skill installed to ~/.claude/skills/prior/`);
+      // Install skill (all platforms with skill support)
+      const skillResult = equip.installSkill(p, { dryRun });
+      if (skillResult.action === "created") {
+        ok(`${platformName(p.platform)}   Skill installed`);
       }
     } catch (e) {
       fail(`${platformName(p.platform)}   ${e.message}`);
@@ -813,9 +780,7 @@ async function runUpdate(args, deps, equip, platforms, transport, nonInteractive
       }
     }
 
-    if (p.platform === "claude-code") {
-      installSkill(p, dryRun);
-    }
+    equip.installSkill(p, { dryRun });
   }
 
   log("\nUpdating MCP config...");
@@ -949,7 +914,7 @@ async function runUninstall(args, equip, dryRun, VERSION) {
   for (const p of platforms) {
     const mcpRemoved = equip.uninstallMcp(p, dryRun);
     const rulesRemoved = equip.uninstallRules(p, dryRun);
-    const skillRemoved = uninstallSkill(p, dryRun);
+    const skillRemoved = equip.uninstallSkill(p, dryRun);
     const hooksRemoved = equip.uninstallHooks(p, { dryRun });
 
     if (mcpRemoved || rulesRemoved || skillRemoved || hooksRemoved) {

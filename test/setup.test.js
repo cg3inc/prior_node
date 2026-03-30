@@ -93,10 +93,9 @@ describe("MCP config generation", () => {
     });
   });
 
-  it("generates correct HTTP config with auth (Cursor uses type: streamable-http)", () => {
+  it("generates correct HTTP config with auth (Cursor — no type field per official docs)", () => {
     const config = buildHttpConfigWithAuth("ask_test123", "cursor");
     assert.deepStrictEqual(config, {
-      type: "streamable-http",
       url: "https://api.cg3.io/mcp",
       headers: { Authorization: "Bearer ask_test123" },
     });
