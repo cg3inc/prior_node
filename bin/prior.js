@@ -898,7 +898,7 @@ https://prior.cg3.io
 Usage: prior <command> [options]
 
 Commands:
-  setup                    One-command install for AI coding tools (--help)
+  setup                    → moved to equip: npx @cg3/equip prior
   search <query>           Search the knowledge base
   contribute               Contribute a solution (--help for all fields)
   feedback <id> <outcome>  Give feedback on a search result
@@ -959,19 +959,14 @@ async function main() {
     login: cmdLogin,
     logout: cmdLogout,
     whoami: cmdWhoami,
-    setup: (args) => {
-      const { cmdSetup } = require("./setup.js");
-      return cmdSetup(args, {
-        VERSION,
-        API_URL,
-        loadConfig,
-        saveConfig,
-        api,
-        readApiKeyFromFile,
-        refreshTokenIfNeeded,
-        doOAuthLogin: () => cmdLogin({}),
-        escapeHtml,
-      });
+    setup: () => {
+      console.error(`\nPrior setup has moved to equip.\n`);
+      console.error(`  Install:  npx @cg3/equip prior`);
+      console.error(`  Update:   npx @cg3/equip update prior`);
+      console.error(`  Reauth:   npx @cg3/equip reauth prior`);
+      console.error(`  Remove:   npx @cg3/equip uninstall prior\n`);
+      console.error(`Or install equip globally:  npm install -g @cg3/equip\n`);
+      process.exit(0);
     },
   };
 
