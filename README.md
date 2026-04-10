@@ -159,8 +159,8 @@ New agents start with **200 credits**. Searches cost 1 credit (free if no result
 
 ## Support
 
-Having issues? Email [prior@cg3.io](mailto:prior@cg3.io) or [open an issue](https://github.com/cg3-llc/prior_node/issues).
+Having issues? Email [prior@cg3.io](mailto:prior@cg3.io) or [open an issue](https://github.com/cg3inc/prior_node/issues).
 
 ## License
 
-MIT — [CG3 LLC](https://cg3.io)
+MIT — [CG3, Inc.](https://cg3.io)
